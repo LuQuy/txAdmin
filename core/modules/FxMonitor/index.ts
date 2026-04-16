@@ -108,6 +108,8 @@ export default class FxMonitor {
     private readonly swLastFD3 = new Stopwatch();
     private readonly swLastHTTP = new Stopwatch();
 
+    private fatalWarns = 0;
+
 
     constructor() {
         // Cron functions
@@ -424,12 +426,28 @@ export default class FxMonitor {
                 throw new Error(`Unexpected fatal state: HB:${heartBeat.state} HC:${healthCheck.state}`);
             }
 
+            // return {
+            //     action: 'RESTART',
+            //     cause,
+            //     times: timeTags.simple,
+            //     reason: 'Server is not responding',
+            //     issues: [heartBeatIssue, healthCheckIssue],
+            // }
+
+            this.fatalWarns += 1;
+            if (this.fatalWarns >= 30) {
+                this.fatalWarns = 0;
+                txCore.discordBot.sendAnnouncement({
+                    type: 'warning',
+                    description: "<@&1352882657742032929> SERVER SẮP NGỎM RỒI 😭😭, LÝ DO: " + cause + ".",
+                });
+            }
+
             return {
-                action: 'RESTART',
-                cause,
-                times: timeTags.simple,
-                reason: 'Server is not responding',
+                action: "WARN",
+                reason: cause,
                 issues: [heartBeatIssue, healthCheckIssue],
+                times: timeTags.simple,
             }
         }
 
