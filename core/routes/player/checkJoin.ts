@@ -232,7 +232,8 @@ function checkBan(
             : [];
         const combined = [...matchingIds, ...matchingHwids];
         const summarizedIds = summarizeIdsArray(combined);
-        const loggerReason = `active ban (${ban.id}) for identifiers ${summarizedIds}`;
+        const inputIds = summarizeIdsArray([...validIdsArray, ...validHwidsArray]);
+        const loggerReason = `active ban (${ban.id}) for identifiers ${summarizedIds}, input ids: ${inputIds}`;
         txCore.logger.server.write([{
             src: 'tx',
             type: 'playerJoinDenied',
