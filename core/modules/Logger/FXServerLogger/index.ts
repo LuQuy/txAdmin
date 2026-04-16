@@ -3,6 +3,7 @@ import bytes from 'bytes';
 import type { Options as RfsOptions } from 'rotating-file-stream';
 import { getLogDivider } from '../loggerUtils.js';
 import consoleFactory, { processStdioWriteRaw } from '@lib/console.js';
+import { getTimeHms } from '@lib/misc.js';
 import { LoggerBase } from '../LoggerBase.js';
 import ConsoleTransformer from './ConsoleTransformer.js';
 import ConsoleLineEnum from './ConsoleLineEnum.js';
@@ -26,6 +27,7 @@ const regexColors = /\x1B[^m]*?m/g;
 export default class FXServerLogger extends LoggerBase {
     private readonly transformer = new ConsoleTransformer();
     private fileBuffer = '';
+    private fileLineStart = true;
     private recentBuffer = '';
     private readonly recentBufferMaxSize = 256 * 1024; //kb
     private readonly recentBufferTrimSliceSize = 32 * 1024; //how much will be cut when overflows
@@ -85,8 +87,13 @@ export default class FXServerLogger extends LoggerBase {
         //Process the data
         const { webBuffer, stdoutBuffer, fileBuffer } = this.transformer.process(type, data, context);
 
-        //To file
-        this.fileBuffer += fileBuffer;
+        //To file - prepend timestamp to each line
+        if (fileBuffer.length) {
+            const ts = `[${getTimeHms()}] `;
+            const prefix = this.fileLineStart ? ts : '';
+            this.fileBuffer += prefix + fileBuffer.replace(/\n(?!$)/g, '\n' + ts);
+            this.fileLineStart = fileBuffer.endsWith('\n');
+        }
 
         //For the terminal
         if (!txConfig.server.quiet && !txHostConfig.forceQuietMode) {
