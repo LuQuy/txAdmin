@@ -1,5 +1,5 @@
 const modulename = 'DiscordBot';
-import Discord, { ActivityType, ChannelType, Client, EmbedBuilder, GatewayIntentBits } from 'discord.js';
+import Discord, { ActivityType, ChannelType, Client, EmbedBuilder, GatewayIntentBits, RESTJSONErrorCodes } from 'discord.js';
 import slashCommands from './slash';
 import interactionCreateHandler from './interactionCreateHandler';
 import { generateStatusMessage } from './commands/status';
@@ -26,6 +26,10 @@ type SpawnConfig = Pick<
     'enabled' | 'token' | 'guild' | 'warningsChannel'
 >;
 
+//How long a fetched guild member (or the lack of one) is cached for
+const MEMBER_CACHE_TTL = 15_000; //ms
+const MEMBER_CACHE_MAX_SIZE = 2000;
+
 
 /**
  * Module that handles the discord bot, provides methods to resolve members and send announcements, as well as
@@ -41,7 +45,6 @@ export default class DiscordBot {
     readonly #clientOptions: Discord.ClientOptions = {
         intents: [
             GatewayIntentBits.Guilds,
-            GatewayIntentBits.GuildMembers,
         ],
         allowedMentions: {
             parse: ['users'],
@@ -60,7 +63,7 @@ export default class DiscordBot {
     guildName: string | undefined;
     announceChannel: Discord.TextBasedChannel | undefined;
     #lastDisallowedIntentsError: number = 0; //ms
-    #lastGuildMembersCacheRefresh: number = 0; //ms
+    #memberCache = new Map<string, { ts: number; member: Discord.GuildMember | null }>();
     #lastStatus = DiscordBotStatus.Disabled;
     #lastExplicitStatus = DiscordBotStatus.Disabled;
 
@@ -107,7 +110,7 @@ export default class DiscordBot {
      * Called by settings save to attempt to restart the bot with new settings
      */
     async attemptBotReset(botCfg: SpawnConfig | false) {
-        this.#lastGuildMembersCacheRefresh = 0;
+        this.#memberCache.clear();
         if (this.#client) {
             console.warn('Stopping Discord Bot');
             this.#client.destroy();
@@ -423,25 +426,40 @@ export default class DiscordBot {
     }
 
     /**
-     * Refreshes the bot guild member cache
+     * Fetches a single guild member via REST, which doesn't require the GUILD_MEMBERS intent.
+     * NOTE: without the intent the discord.js member cache goes stale, so we always force fetch
+     * and keep our own short-lived cache instead.
      */
-    async refreshMemberCache() {
-        if (!txConfig.discordBot.enabled) throw new Error(`discord bot is disabled`);
-        if (!this.#client?.isReady()) throw new Error(`discord bot not ready yet`);
+    async #fetchGuildMember(uid: string) {
         if (!this.guild) throw new Error(`guild not resolved`);
 
-        //Check when the cache was last refreshed
         const currTs = Date.now();
-        if (currTs - this.#lastGuildMembersCacheRefresh > 60_000) {
-            try {
-                await this.guild.members.fetch();
-                this.#lastGuildMembersCacheRefresh = currTs;
-                return true;
-            } catch (error) {
-                return false;
+        const cached = this.#memberCache.get(uid);
+        if (cached && currTs - cached.ts < MEMBER_CACHE_TTL) {
+            return cached.member;
+        }
+
+        let member: Discord.GuildMember | null;
+        try {
+            member = await this.guild.members.fetch({ user: uid, force: true });
+        } catch (error) {
+            const code = (error as any)?.code;
+            if (code === RESTJSONErrorCodes.UnknownMember || code === RESTJSONErrorCodes.UnknownUser) {
+                member = null;
+            } else {
+                throw error;
             }
         }
-        return false;
+
+        //Prune expired entries so the cache can't grow unbounded
+        if (this.#memberCache.size >= MEMBER_CACHE_MAX_SIZE) {
+            for (const [key, entry] of this.#memberCache) {
+                if (currTs - entry.ts >= MEMBER_CACHE_TTL) this.#memberCache.delete(key);
+            }
+            if (this.#memberCache.size >= MEMBER_CACHE_MAX_SIZE) this.#memberCache.clear();
+        }
+        this.#memberCache.set(uid, { ts: currTs, member });
+        return member;
     }
 
 
@@ -453,11 +471,7 @@ export default class DiscordBot {
         if (!this.#client?.isReady()) throw new Error(`discord bot not ready yet`);
         if (!this.guild) throw new Error(`guild not resolved`);
 
-        //Try to get member from cache or refresh cache then try again
-        let member = this.guild.members.cache.find(m => m.id === uid);
-        if (!member && await this.refreshMemberCache()) {
-            member = this.guild.members.cache.find(m => m.id === uid);
-        }
+        const member = await this.#fetchGuildMember(uid);
 
         //Return result
         if (member) {
@@ -480,11 +494,10 @@ export default class DiscordBot {
 
         //Check if in guild member
         if (this.guild) {
-            //Try to get member from cache or refresh cache then try again
-            let member = this.guild.members.cache.find(m => m.id === uid);
-            if (!member && await this.refreshMemberCache()) {
-                member = this.guild.members.cache.find(m => m.id === uid);
-            }
+            let member: Discord.GuildMember | null = null;
+            try {
+                member = await this.#fetchGuildMember(uid);
+            } catch (error) { }
 
             if (member) {
                 return {

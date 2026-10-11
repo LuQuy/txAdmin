@@ -126,8 +126,7 @@ export default function ConfigCardDiscord({ cardCtx, pageCtx }: SettingsCardProp
                 <SettingItemDesc>
                     To get a token and the bot to join your server, follow these two guides: <br />
                     <TxAnchor href="https://discordjs.guide/legacy/preparations/app-setup">Setting up a bot application</TxAnchor> and <TxAnchor href="https://discordjs.guide/legacy/preparations/adding-your-app">Adding your bot to servers</TxAnchor> <br />
-                    <strong>Note:</strong> Do not reuse the same token for another bot. <br />
-                    <strong>Note:</strong> The bot requires the <strong>Server Members</strong> intent, which can be set at the <TxAnchor href="https://discord.com/developers/applications">Discord Developer Portal</TxAnchor>.
+                    <strong>Note:</strong> Do not reuse the same token for another bot.
                 </SettingItemDesc>
             </SettingItem>
             <SettingItem label="Guild/Server ID" htmlFor={cfg.discordGuild.eid} required={states.botEnabled}>

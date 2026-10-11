@@ -365,14 +365,7 @@ const handleDiscordCard: CardHandler = async (inputConfig, sendTypedResp) => {
     } catch (error) {
         const errorCode = (error as any).code;
         let extraContext = '';
-        if (errorCode === 'DisallowedIntents' || errorCode === 4014) {
-            extraContext = `**The bot requires the \`GUILD_MEMBERS\` intent.**
-            - Go to the [Discord Dev Portal](https://discord.com/developers/applications)
-            - Navigate to \`Bot > Privileged Gateway Intents\`.
-            - Enable the \`GUILD_MEMBERS\` intent.
-            - Press save on the developer portal.
-            - Go to the \`txAdmin > Settings > Discord Bot\` and press save.`;
-        } else if (errorCode === 'CustomNoGuild') {
+        if (errorCode === 'CustomNoGuild') {
             const inviteUrl = ('clientId' in (error as any))
                 ? `https://discord.com/oauth2/authorize?client_id=${(error as any).clientId}&scope=bot&permissions=0`
                 : `https://discordapi.com/permissions.html#0`
