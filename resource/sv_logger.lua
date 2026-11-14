@@ -105,7 +105,7 @@ end)
 -- An internal server handler, this is NOT exposed to the client
 local function getLogPlayerName(src)
     if type(src) == 'number' then 
-        local name = sub(GetPlayerName(src) or "unknown", 1, 75)
+        local name = TX_NAME_OVERRIDES[tostring(src)] or sub(GetPlayerName(src) or "unknown", 1, 75)
         return '[#'..src..'] '..name
     else
         return '[??] '.. (src or "unknown")
@@ -239,6 +239,14 @@ RegisterNetEvent('txaLogger:DebugMessage', function(data)
 end)
 
 local function logChatMessage(src, author, text)
+    -- if the author is the player's in-game name, replace it with the overridden (discord) name
+    local srcNum = tonumber(src)
+    if srcNum then
+        local nameOverride = TX_NAME_OVERRIDES[tostring(srcNum)]
+        if nameOverride and author == GetPlayerName(srcNum) then
+            author = nameOverride
+        end
+    end
     local logData = {
         author = author,
         text = text

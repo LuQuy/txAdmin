@@ -94,6 +94,10 @@ export default async function PlayerCheckJoin(ctx: InitializedCtx) {
     if (!Array.isArray(playerHwids)) return sendTypedResp({ error: 'playerHwids should be an array.' });
     const { validHwidsArray } = filterPlayerHwids(playerHwids);
 
+    //Pre-warm the discord display name cache, so it's available when the player joins
+    if (validIdsObject.discord && txCore.discordBot.isClientReady) {
+        txCore.discordBot.resolveDisplayName(validIdsObject.discord).catch(() => { });
+    }
 
     try {
         // If ban checking enabled

@@ -4,6 +4,8 @@ export type DatabasePlayerType = {
     hwids: string[];
     displayName: string;
     pureName: string;
+    gameName?: string; //in-game (FiveM) name, as displayName might be the discord display name
+    gamePureName?: string; //pure version of gameName, used for searching
     playTime: number;
     tsLastConnection: number;
     tsJoined: number;

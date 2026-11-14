@@ -122,6 +122,16 @@ local function showGamerTags()
     for _, pid in ipairs(allActivePlayers) do
         -- Resolving player
         local targetPed = GetPlayerPed(pid)
+        -- Prefer the name from the tx playerlist (eg. discord name)
+        local listEntry = LOCAL_PLAYERLIST[tostring(GetPlayerServerId(pid))]
+        local playerName = (listEntry and listEntry.name ~= 'unknown') and listEntry.name
+            or string.sub(GetPlayerName(pid) or "unknown", 1, 75)
+        local playerStr = '[' .. GetPlayerServerId(pid) .. ']' .. ' ' .. playerName
+
+        -- If the player name changed (eg. discord name resolved), recreate the tags
+        if playerGamerTags[pid] and playerGamerTags[pid].str ~= playerStr then
+            cleanAllGamerTags()
+        end
 
         -- If we have not yet indexed this player or their tag has somehow dissapeared (pause, etc)
         if
@@ -129,11 +139,10 @@ local function showGamerTags()
             or playerGamerTags[pid].ped ~= targetPed --ped can change if it leaves the networked area and back
             or not IsMpGamerTagActive(playerGamerTags[pid].gamerTag)
         then
-            local playerName = string.sub(GetPlayerName(pid) or "unknown", 1, 75)
-            local playerStr = '[' .. GetPlayerServerId(pid) .. ']' .. ' ' .. playerName
             playerGamerTags[pid] = {
                 gamerTag = CreateFakeMpGamerTag(targetPed, playerStr, false, false, 0),
-                ped = targetPed
+                ped = targetPed,
+                str = playerStr,
             }
         end
         local targetTag = playerGamerTags[pid].gamerTag

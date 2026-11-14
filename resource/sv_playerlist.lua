@@ -71,7 +71,7 @@ local function refreshPlayerList()
         -- Updating TX_PLAYERLIST
         if type(TX_PLAYERLIST[serverID]) ~= 'table' then
             TX_PLAYERLIST[serverID] = {
-                name = sub(GetPlayerName(serverID) or "unknown", 1, 75),
+                name = TX_NAME_OVERRIDES[tostring(serverID)] or sub(GetPlayerName(serverID) or "unknown", 1, 75),
                 health = health,
                 vType = vType,
                 xCoord = xCoord,
@@ -102,6 +102,7 @@ local function refreshPlayerList()
             playerData.foundLastCheck = false
         else
             TX_PLAYERLIST[playerID] = nil
+            TX_NAME_OVERRIDES[tostring(playerID)] = nil
         end
     end
     return playersOnline
@@ -173,6 +174,8 @@ AddEventHandler('playerDropped', function(reason, resource, category)
         logError('playerDropped event with source ' .. json.encode(source))
         return
     end
+
+    TX_NAME_OVERRIDES[tostring(source)] = nil
 
     if resource == 'monitor' and TX_IS_SERVER_SHUTTING_DOWN then
         reason = 'server_shutting_down'

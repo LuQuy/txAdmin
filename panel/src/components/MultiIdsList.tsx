@@ -14,6 +14,7 @@ const InvisibleNewLine = () => <span className="opacity-0">{'\n'}</span>;
 //Sort IDs prioritizing license IDs
 const sortIds = (a: string, b: string) => {
     const getPriority = (id: string) => {
+        if (id.startsWith('playername:')) return -1;
         if (id.startsWith('license:')) return 0;
         if (id.startsWith('license2:')) return 1;
         return 2;
@@ -74,7 +75,8 @@ function IdLine({
     toggleMarkRemoval,
     disableButtons,
 }: IdLineProps) {
-    const canBeRemoved = !id.startsWith('license:') && !isOnline; // Only allow removal of old IDs
+    // Only allow removal of old IDs (playername is a display-only pseudo-identifier)
+    const canBeRemoved = !id.startsWith('license:') && !id.startsWith('playername:') && !isOnline;
     const isBold = (isComparing && isMatch)
         || (!isComparing && !highlightOnline)
         || (!isComparing && highlightOnline && isOnline);

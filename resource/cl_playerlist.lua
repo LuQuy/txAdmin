@@ -183,6 +183,25 @@ RegisterNetEvent('txcl:plist:updatePlayer', function(id, data)
 end)
 
 
+-- Triggered when txAdmin resolves a new name for a player (eg. discord display name)
+RegisterNetEvent('txcl:plist:setName', function(id, name)
+    if type(name) ~= 'string' then return end
+    local pids = tostring(id)
+    if LOCAL_PLAYERLIST[pids] == nil then
+        LOCAL_PLAYERLIST[pids] = {
+            name = name,
+            health = 0,
+            dist = -1,
+            vType = "unknown",
+            admin = false
+        }
+    else
+        LOCAL_PLAYERLIST[pids].name = name
+    end
+    sendReactPlayerlist()
+end)
+
+
 -- Triggered when the "player" tab opens in the menu, and every 5s after that
 RegisterSecureNuiCallback('signalPlayersPageOpen', function(_, cb)
     TriggerServerEvent('txsv:req:plist:getDetailed', requirePlayerNames)

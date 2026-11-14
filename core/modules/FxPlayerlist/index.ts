@@ -3,9 +3,12 @@ import { cloneDeep } from 'lodash-es';
 import { ServerPlayer } from '@lib/player/playerClasses.js';
 import { DatabaseActionWarnType, DatabasePlayerType } from '@modules/Database/databaseTypes';
 import consoleFactory from '@lib/console';
-import { PlayerDroppedEventType, PlayerJoiningEventType } from '@shared/socketioTypes';
+import { PlayerDroppedEventType, PlayerJoiningEventType, PlayerNameUpdatedEventType } from '@shared/socketioTypes';
 import { SYM_SYSTEM_AUTHOR } from '@lib/symbols';
 const console = consoleFactory(modulename);
+
+//How long to wait for the discord display name before logging the player join
+const DISCORD_NAME_JOIN_TIMEOUT = 2000; //ms
 
 
 export type PlayerDropEvent = {
@@ -83,6 +86,7 @@ export default class FxPlayerlist {
         }
         this.licenseCache = this.licenseCache.slice(-this.licenseCacheLimit);
         this.#playerlist = [];
+        txCore.discordBot.clearDisplayNameCache();
         this.joinLeaveLog = [];
         txCore.webServer.webSocket!.buffer('playerlist', {
             mutex: oldMutex,
@@ -201,6 +205,26 @@ export default class FxPlayerlist {
 
 
     /**
+     * Notifies the panel (websocket) and the game server (in-game menu) about a player name change.
+     */
+    #dispatchPlayerNameUpdate(player: ServerPlayer, mutex: string, notifyPanel = true) {
+        if (notifyPanel) {
+            txCore.webServer.webSocket.buffer<PlayerNameUpdatedEventType>('playerlist', {
+                mutex,
+                type: 'playerNameUpdated',
+                netid: player.netid,
+                displayName: player.displayName,
+                pureName: player.pureName,
+            });
+        }
+        txCore.fxRunner.sendEvent('playerNameUpdated', {
+            netid: player.netid,
+            name: player.displayName,
+        });
+    }
+
+
+    /**
      * Handler for all txAdminPlayerlistEvent structured trace events
      * TODO: use zod for type safety
      */
@@ -213,12 +237,43 @@ export default class FxPlayerlist {
                 const svPlayer = new ServerPlayer(payload.id, payload.player, this);
                 this.#playerlist[payload.id] = svPlayer;
                 this.joinLeaveLog.push([currTs, true]);
-                txCore.logger.server.write([{
+                const joinLogEntry = {
                     type: 'playerJoining',
                     src: payload.id,
                     ts: currTs,
-                    data: { ids: svPlayer.idsOnline }
-                }], mutex);
+                    data: { ids: svPlayer.idsOnline }, //captured now as disconnect() clears it
+                };
+
+                //Resolve the discord display name (if not cached) before logging the join
+                //NOTE: this function is not awaited by the caller, so it doesn't block other events
+                if (svPlayer.discordId) {
+                    if (txCore.discordBot.getCachedDisplayName(svPlayer.discordId) === undefined) {
+                        const resolvePromise = txCore.discordBot.resolveDisplayName(svPlayer.discordId);
+                        const timeoutPromise = new Promise<undefined>((resolve) => {
+                            setTimeout(resolve, DISCORD_NAME_JOIN_TIMEOUT, undefined);
+                        });
+                        const result = await Promise.race([resolvePromise, timeoutPromise]);
+                        if (typeof result === 'string') {
+                            svPlayer.applyDisplayName(result);
+                        } else if (result === undefined) {
+                            //Timed out, apply whenever it resolves
+                            resolvePromise.then((name) => {
+                                if (typeof name !== 'string' || !svPlayer.isConnected) return;
+                                if (svPlayer.applyDisplayName(name)) {
+                                    this.#dispatchPlayerNameUpdate(svPlayer, mutex);
+                                }
+                            }).catch(() => { });
+                        }
+                    }
+                    if (svPlayer.isConnected && svPlayer.displayName !== svPlayer.gameName) {
+                        this.#dispatchPlayerNameUpdate(svPlayer, mutex, false);
+                    }
+                }
+
+                txCore.logger.server.write([joinLogEntry], mutex);
+
+                //If the player dropped while we were waiting, don't re-add it to the panel playerlist
+                if (!svPlayer.isConnected) return;
                 txCore.webServer.webSocket.buffer<PlayerJoiningEventType>('playerlist', {
                     mutex,
                     type: 'playerJoining',

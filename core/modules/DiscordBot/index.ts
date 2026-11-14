@@ -1,5 +1,5 @@
 const modulename = 'DiscordBot';
-import Discord, { ActivityType, ChannelType, Client, EmbedBuilder, GatewayIntentBits, RESTJSONErrorCodes } from 'discord.js';
+import Discord, { ActivityType, ChannelType, Client, EmbedBuilder, GatewayIntentBits, RESTJSONErrorCodes, Routes } from 'discord.js';
 import slashCommands from './slash';
 import interactionCreateHandler from './interactionCreateHandler';
 import { generateStatusMessage } from './commands/status';
@@ -64,6 +64,9 @@ export default class DiscordBot {
     announceChannel: Discord.TextBasedChannel | undefined;
     #lastDisallowedIntentsError: number = 0; //ms
     #memberCache = new Map<string, { ts: number; member: Discord.GuildMember | null }>();
+    //Discord display names cached by discord id until the server restarts (null = user not found)
+    #displayNameCache = new Map<string, string | null>();
+    #displayNamePending = new Map<string, Promise<string | null>>();
     #lastStatus = DiscordBotStatus.Disabled;
     #lastExplicitStatus = DiscordBotStatus.Disabled;
 
@@ -519,5 +522,60 @@ export default class DiscordBot {
         } else {
             throw new Error(`could not resolve discord user`);
         }
+    }
+
+
+    /**
+     * Returns the cached discord display name for a discord id.
+     * Returns undefined if not cached, null if the user could not be found.
+     */
+    getCachedDisplayName(uid: string) {
+        return this.#displayNameCache.get(uid);
+    }
+
+
+    /**
+     * Clears the display name cache (called when the server closes).
+     */
+    clearDisplayNameCache() {
+        this.#displayNameCache.clear();
+    }
+
+
+    /**
+     * Resolves the discord display name (global_name ?? username) of a user, caching the result.
+     * NOTE: uses the raw REST API as discord.js 14.11 does not expose User#globalName
+     */
+    async resolveDisplayName(uid: string): Promise<string | null> {
+        const cached = this.#displayNameCache.get(uid);
+        if (cached !== undefined) return cached;
+        if (!txConfig.discordBot.enabled || !this.#client?.isReady()) return null;
+
+        const pending = this.#displayNamePending.get(uid);
+        if (pending) return pending;
+
+        const client = this.#client;
+        const promise = (async () => {
+            try {
+                const user = await client.rest.get(Routes.user(uid)) as { username?: string; global_name?: string | null };
+                const name = (typeof user?.global_name === 'string' && user.global_name.trim().length)
+                    ? user.global_name
+                    : (typeof user?.username === 'string' ? user.username : null);
+                this.#displayNameCache.set(uid, name);
+                return name;
+            } catch (error) {
+                const code = (error as any)?.code;
+                if (code === RESTJSONErrorCodes.UnknownUser) {
+                    this.#displayNameCache.set(uid, null);
+                } else {
+                    console.verbose.warn(`Failed to resolve discord display name for ${uid}: ${(error as Error).message}`);
+                }
+                return null;
+            } finally {
+                this.#displayNamePending.delete(uid);
+            }
+        })();
+        this.#displayNamePending.set(uid, promise);
+        return promise;
     }
 };

@@ -18,6 +18,7 @@ const console = consoleFactory(modulename);
 export class BasePlayer {
     displayName: string = 'unknown';
     pureName: string = 'unknown';
+    gameName: string | undefined; //the in-game (FiveM) name, as displayName might be the discord name
     idsOnline: string[] = [];
     hwidsOnline: string[] = [];
     license: null | string = null; //extracted for convenience
@@ -147,6 +148,8 @@ export class ServerPlayer extends BasePlayer {
     readonly netid: number;
     readonly tsConnected: number = now();
     readonly isRegistered: boolean;
+    readonly discordId: string | undefined;
+    readonly #gamePureName: string;
     readonly #minuteCronInterval?: ReturnType<typeof setInterval>;
     // #offlineDbDataCacheTimeout?: ReturnType<typeof setTimeout>;
 
@@ -177,11 +180,24 @@ export class ServerPlayer extends BasePlayer {
         this.hwidsOnline = playerData.hwids.filter(x => {
             return typeof x === 'string' && consts.regexValidHwidToken.test(x);
         });
+        this.discordId = validIdsObject.discord ?? undefined;
 
         //Processing player name
         const { displayName, pureName } = cleanPlayerName(playerData.name);
+        this.gameName = displayName;
+        this.#gamePureName = pureName;
         this.displayName = displayName;
         this.pureName = pureName;
+
+        //Use the cached discord display name, if available
+        const cachedDiscordName = this.discordId
+            ? txCore.discordBot.getCachedDisplayName(this.discordId)
+            : undefined;
+        if (typeof cachedDiscordName === 'string') {
+            const discordNames = cleanPlayerName(cachedDiscordName);
+            this.displayName = discordNames.displayName;
+            this.pureName = discordNames.pureName;
+        }
 
         //If this player is eligible to be on the database
         if (this.license) {
@@ -216,6 +232,8 @@ export class ServerPlayer extends BasePlayer {
                 this.mutateDbData({
                     displayName: this.displayName,
                     pureName: this.pureName,
+                    gameName: this.gameName,
+                    gamePureName: this.#gamePureName,
                     tsLastConnection: this.tsConnected,
                     ids: union(dbPlayer.ids, this.idsOnline),
                     hwids: union(dbPlayer.hwids, this.hwidsOnline),
@@ -228,6 +246,8 @@ export class ServerPlayer extends BasePlayer {
                     hwids: this.hwidsOnline,
                     displayName: this.displayName,
                     pureName: this.pureName,
+                    gameName: this.gameName,
+                    gamePureName: this.#gamePureName,
                     playTime: 0,
                     tsLastConnection: this.tsConnected,
                     tsJoined: this.tsConnected,
@@ -264,6 +284,25 @@ export class ServerPlayer extends BasePlayer {
         if (oldestPendingWarn) {
             this.#fxPlayerlist.dispatchInitialPlayerData(this.netid, oldestPendingWarn);
         }
+    }
+
+    /**
+     * Applies a new display name (eg. discord display name) to this player, and saves it to the database.
+     * Returns true if the name changed.
+     */
+    applyDisplayName(name: string) {
+        const { displayName, pureName } = cleanPlayerName(name);
+        if (displayName === this.displayName && pureName === this.pureName) return false;
+        this.displayName = displayName;
+        this.pureName = pureName;
+        if (this.isRegistered && this.isConnected && this.license) {
+            try {
+                this.mutateDbData({ displayName, pureName });
+            } catch (error) {
+                console.warn(`Failed to save display name for player ${this.displayName}: ${(error as Error).message}`);
+            }
+        }
+        return true;
     }
 
     /**
@@ -375,6 +414,7 @@ export class DatabasePlayer extends BasePlayer {
         this.license = license;
         this.displayName = this.dbData.displayName;
         this.pureName = this.dbData.pureName;
+        this.gameName = this.dbData.gameName;
     }
 
     /**

@@ -116,7 +116,7 @@ export default async function PlayerSearch(ctx: AuthedCtx) {
             const players = chain.value();
             const fuse = new Fuse(players, {
                 isCaseSensitive: true, //maybe that's an optimization?!
-                keys: ['pureName'],
+                keys: ['pureName', 'gamePureName'], //gamePureName = in-game name, as pureName might be from discord
                 threshold: 0.3
             });
             const filtered = fuse.search(pureName).map(x => x.item);

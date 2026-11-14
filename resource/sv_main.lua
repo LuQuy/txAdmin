@@ -25,6 +25,7 @@ end
 -- =============================================
 TX_ADMINS = {}
 TX_PLAYERLIST = {}
+TX_NAME_OVERRIDES = {} -- [serverID string] = discord display name, set by core via playerNameUpdated
 TX_LUACOMHOST = GetConvar("txAdmin-luaComHost", "invalid")
 TX_LUACOMTOKEN = GetConvar("txAdmin-luaComToken", "invalid")
 TX_VERSION = GetResourceMetadata('monitor', 'version') -- for now, only used in the start print
@@ -194,6 +195,25 @@ TX_EVENT_HANDLERS.announcement = function(eventData)
         TriggerClientEvent('txcl:showAnnouncement', -1, eventData.message, authorName)
     end
     TriggerEvent('txsv:logger:addChatMessage', 'tx', '(Broadcast) '..authorName, eventData.message)
+end
+
+
+--- Handler for player name updates (eg. discord display name resolved by txAdmin)
+--- Overrides the player name used by the menu playerlist, logger and overhead tags
+TX_EVENT_HANDLERS.playerNameUpdated = function(eventData)
+    if type(eventData.netid) ~= 'number' or type(eventData.name) ~= 'string' then
+        return logError('[playerNameUpdated] invalid eventData')
+    end
+    local pid = tostring(eventData.netid)
+    if GetPlayerName(pid) == nil then return end --player already dropped
+    local name = string.sub(eventData.name, 1, 75)
+    TX_NAME_OVERRIDES[pid] = name
+    if type(TX_PLAYERLIST[pid]) == 'table' then
+        TX_PLAYERLIST[pid].name = name
+    end
+    for adminID, _ in pairs(TX_ADMINS) do
+        TriggerClientEvent('txcl:plist:setName', adminID, eventData.netid, name)
+    end
 end
 
 

@@ -60,8 +60,13 @@ export default async function PlayerModal(ctx: AuthedCtx) {
         isRegistered: player.isRegistered,
         isConnected: player.isConnected,
         license: player.license,
-        idsOnline: player.idsOnline,
-        idsOffline: player.idsOffline,
+        //NOTE: the playername pseudo-identifier is display-only, never saved to the database
+        idsOnline: (player.isConnected && player.gameName)
+            ? [`playername:${player.gameName}`, ...player.idsOnline]
+            : player.idsOnline,
+        idsOffline: (!player.isConnected && player.gameName)
+            ? [`playername:${player.gameName}`, ...player.idsOffline]
+            : player.idsOffline,
         hwidsOnline: player.hwidsOnline,
         hwidsOffline: player.hwidsOffline,
         actionHistory: processHistoryLog(player.getHistory()),
