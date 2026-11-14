@@ -543,8 +543,11 @@ export default class DiscordBot {
 
 
     /**
-     * Resolves the discord display name (global_name ?? username) of a user, caching the result.
+     * Resolves the discord display name of a user, caching the result.
+     * Order: guild nickname > global display name > username.
+     * If the user is not a member of the configured guild, falls back to the user profile.
      * NOTE: uses the raw REST API as discord.js 14.11 does not expose User#globalName
+     * NOTE: fetching a single member via REST does not require the GUILD_MEMBERS intent
      */
     async resolveDisplayName(uid: string): Promise<string | null> {
         const cached = this.#displayNameCache.get(uid);
@@ -554,13 +557,37 @@ export default class DiscordBot {
         const pending = this.#displayNamePending.get(uid);
         if (pending) return pending;
 
+        type RawUser = { username?: string | null; global_name?: string | null };
+        type RawMember = { nick?: string | null; user?: RawUser };
+        const pickName = (...candidates: unknown[]) => {
+            const found = candidates.find((x) => typeof x === 'string' && x.trim().length);
+            return (found as string | undefined) ?? null;
+        };
+
         const client = this.#client;
+        const guildId = this.guild?.id;
         const promise = (async () => {
             try {
-                const user = await client.rest.get(Routes.user(uid)) as { username?: string; global_name?: string | null };
-                const name = (typeof user?.global_name === 'string' && user.global_name.trim().length)
-                    ? user.global_name
-                    : (typeof user?.username === 'string' ? user.username : null);
+                let name: string | null = null;
+                let isGuildMember = false;
+
+                //Try the guild member first, to get the guild nickname
+                if (guildId) {
+                    try {
+                        const member = await client.rest.get(Routes.guildMember(guildId, uid)) as RawMember;
+                        isGuildMember = true;
+                        name = pickName(member?.nick, member?.user?.global_name, member?.user?.username);
+                    } catch (error) {
+                        if ((error as any)?.code !== RESTJSONErrorCodes.UnknownMember) throw error;
+                    }
+                }
+
+                //Not in the guild (or guild not resolved), use the user profile
+                if (!isGuildMember) {
+                    const user = await client.rest.get(Routes.user(uid)) as RawUser;
+                    name = pickName(user?.global_name, user?.username);
+                }
+
                 this.#displayNameCache.set(uid, name);
                 return name;
             } catch (error) {
