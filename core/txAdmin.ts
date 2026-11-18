@@ -17,6 +17,7 @@ import FxPlayerlist from '@modules/FxPlayerlist';
 import Database from '@modules/Database';
 import CacheStore from '@modules/CacheStore';
 import UpdateChecker from '@modules/UpdateChecker';
+import AdminModeScheduler from '@modules/AdminModeScheduler';
 const console = consoleFactory();
 
 
@@ -35,6 +36,7 @@ export type TxCoreType = {
     fxResources: FxResources;
     fxRunner: FxRunner;
     fxScheduler: FxScheduler;
+    adminModeScheduler: AdminModeScheduler;
 
     //Other
     discordBot: DiscordBot;
@@ -101,6 +103,7 @@ export default function bootTxAdmin() {
     //Low Priority
     _txCore.translator = startModule(Translator);
     _txCore.fxScheduler = startModule(FxScheduler);
+    _txCore.adminModeScheduler = startModule(AdminModeScheduler);
     _txCore.metrics = startModule(Metrics);
     _txCore.fxResources = startModule(FxResources);
     _txCore.fxPlayerlist = startModule(FxPlayerlist);

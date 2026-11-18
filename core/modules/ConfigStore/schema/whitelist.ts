@@ -2,6 +2,7 @@ import { z } from "zod";
 import { discordSnowflakeSchema, typeDefinedConfig } from "./utils";
 import { SYM_FIXER_DEFAULT } from "@lib/symbols";
 import consts from "@shared/consts";
+import { regexHoursMinutes } from "@lib/misc";
 
 
 const mode = typeDefinedConfig({
@@ -35,9 +36,42 @@ const discordRoles = typeDefinedConfig({
     },
 });
 
+const scheduledAdminModeEnabled = typeDefinedConfig({
+    name: 'Scheduled Admin-mode Enabled',
+    default: false,
+    validator: z.boolean(),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const scheduledAdminModeFrequency = typeDefinedConfig({
+    name: 'Scheduled Admin-mode Frequency',
+    default: 'daily',
+    validator: z.enum(['daily', 'nextDay']),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const scheduledAdminModeTime = typeDefinedConfig({
+    name: 'Scheduled Admin-mode Time',
+    default: '17:45',
+    validator: z.string().regex(regexHoursMinutes),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+// Internal target date used to keep a one-time schedule stable across restarts.
+const scheduledAdminModeDate = typeDefinedConfig({
+    name: 'Scheduled Admin-mode Date',
+    default: '',
+    validator: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
 
 export default {
     mode,
     rejectionMessage,
     discordRoles,
+    scheduledAdminModeEnabled,
+    scheduledAdminModeFrequency,
+    scheduledAdminModeTime,
+    scheduledAdminModeDate,
 } as const;

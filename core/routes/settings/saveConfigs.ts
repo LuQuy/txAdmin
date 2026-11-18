@@ -18,6 +18,7 @@ import { generateStatusMessage } from '@modules/DiscordBot/commands/status';
 import { getSchemaChainError } from '@modules/ConfigStore/schema/utils';
 import { confx } from '@modules/ConfigStore/utils';
 import { SYM_RESET_CONFIG } from '@lib/symbols';
+import { getNextDayDate } from '@modules/AdminModeScheduler';
 const console = consoleFactory(modulename);
 
 
@@ -110,6 +111,8 @@ export default async function SaveSettingsConfigs(ctx: AuthedCtx) {
             handlerResp = await handleFxserverCard(inputConfig, sendTypedResp);
         } else if (cardId === 'discord') {
             handlerResp = await handleDiscordCard(inputConfig, sendTypedResp);
+        } else if (cardId === 'whitelist') {
+            handlerResp = await handleWhitelistCard(inputConfig, sendTypedResp);
         }
     } catch (error) {
         return sendTypedResp({
@@ -160,6 +163,34 @@ export default async function SaveSettingsConfigs(ctx: AuthedCtx) {
             msg: (error as any).message,
         });
     }
+};
+
+
+/**
+ * Allowlist card handler
+ */
+const handleWhitelistCard: CardHandler = async (inputConfig) => {
+    if (!inputConfig.whitelist) throw new Error(`Unexpected data for the 'whitelist' card.`);
+
+    const incoming = inputConfig.whitelist;
+    const enabled = incoming.scheduledAdminModeEnabled ?? txConfig.whitelist.scheduledAdminModeEnabled;
+    const frequency = incoming.scheduledAdminModeFrequency ?? txConfig.whitelist.scheduledAdminModeFrequency;
+    const relevantSettingChanged = (
+        enabled !== txConfig.whitelist.scheduledAdminModeEnabled
+        || frequency !== txConfig.whitelist.scheduledAdminModeFrequency
+        || (
+            incoming.scheduledAdminModeTime !== undefined
+            && incoming.scheduledAdminModeTime !== txConfig.whitelist.scheduledAdminModeTime
+        )
+    );
+
+    if (!enabled || frequency === 'daily') {
+        incoming.scheduledAdminModeDate = '';
+    } else if (relevantSettingChanged || !txConfig.whitelist.scheduledAdminModeDate) {
+        incoming.scheduledAdminModeDate = getNextDayDate();
+    }
+
+    return { processedConfig: inputConfig };
 };
 
 

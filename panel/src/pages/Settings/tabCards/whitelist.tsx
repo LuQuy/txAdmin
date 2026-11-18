@@ -10,12 +10,17 @@ import { AutosizeTextarea, AutosizeTextAreaRef } from "@/components/ui/autosize-
 import SettingsCardShell from "../SettingsCardShell"
 import { txToast } from "@/components/TxToaster"
 import consts from "@shared/consts"
+import SwitchText from '@/components/SwitchText'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 
 export const pageConfigs = {
     whitelistMode: getPageConfig('whitelist', 'mode'),
     rejectionMessage: getPageConfig('whitelist', 'rejectionMessage'),
     discordRoles: getPageConfig('whitelist', 'discordRoles'),
+    scheduledAdminModeEnabled: getPageConfig('whitelist', 'scheduledAdminModeEnabled'),
+    scheduledAdminModeFrequency: getPageConfig('whitelist', 'scheduledAdminModeFrequency'),
+    scheduledAdminModeTime: getPageConfig('whitelist', 'scheduledAdminModeTime'),
 } as const;
 
 export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardProps) {
@@ -230,6 +235,48 @@ export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardPr
                     This message will show on the in-game server page and will also be sent to the player when they try to connect while not being allowlisted.
                     <SettingItemWarningLine visible={!pageCtx.isReadOnly && !isPlayerAllowlistEnabled}>
                         This field requires the Allowlist Mode to be enabled and not in Admin-only mode.
+                    </SettingItemWarningLine>
+                </SettingItemDesc>
+            </SettingItem>
+            <SettingItem
+                label="Scheduled Admin-mode"
+                htmlFor={cfg.scheduledAdminModeEnabled.eid}
+            >
+                <SwitchText
+                    id={cfg.scheduledAdminModeEnabled.eid}
+                    checkedLabel="Enabled"
+                    uncheckedLabel="Disabled"
+                    checked={states.scheduledAdminModeEnabled}
+                    onCheckedChange={cfg.scheduledAdminModeEnabled.state.set}
+                    disabled={pageCtx.isReadOnly}
+                />
+                <div className="flex max-w-md flex-col gap-2 sm:flex-row">
+                    <Select
+                        value={states.scheduledAdminModeFrequency}
+                        onValueChange={cfg.scheduledAdminModeFrequency.state.set as any}
+                        disabled={pageCtx.isReadOnly || !states.scheduledAdminModeEnabled}
+                    >
+                        <SelectTrigger id={cfg.scheduledAdminModeFrequency.eid}>
+                            <SelectValue placeholder="Select frequency..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="nextDay">Tomorrow only</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Input
+                        id={cfg.scheduledAdminModeTime.eid}
+                        type="time"
+                        value={states.scheduledAdminModeTime ?? ''}
+                        onChange={(event) => cfg.scheduledAdminModeTime.state.set(event.target.value)}
+                        disabled={pageCtx.isReadOnly || !states.scheduledAdminModeEnabled}
+                        className="sm:w-36"
+                    />
+                </div>
+                <SettingItemDesc>
+                    Automatically changes the Allowlist Mode to Admin-only at the selected server time. Choose Daily to repeat every day, or Tomorrow only to run once on the next day and then disable this schedule.
+                    <SettingItemWarningLine visible={!pageCtx.isReadOnly && !states.scheduledAdminModeEnabled}>
+                        Enable this setting to schedule Admin-only mode. When disabled, the Allowlist Mode is changed manually.
                     </SettingItemWarningLine>
                 </SettingItemDesc>
             </SettingItem>

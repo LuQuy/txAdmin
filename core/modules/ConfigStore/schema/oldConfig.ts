@@ -63,6 +63,10 @@ const restructureOldConfig = (old: any) => {
             mode: old?.playerDatabase?.whitelistMode,
             rejectionMessage: old?.playerDatabase?.whitelistRejectionMessage,
             discordRoles: old?.playerDatabase?.whitelistedDiscordRoles,
+            scheduledAdminModeEnabled: false,
+            scheduledAdminModeFrequency: 'daily',
+            scheduledAdminModeTime: '17:45',
+            scheduledAdminModeDate: '',
         },
         gameFeatures: {
             menuEnabled: old?.global?.menuEnabled,
