@@ -4,13 +4,12 @@ import type { UpdateConfigKeySet } from './ConfigStore/utils';
 const console = consoleFactory(modulename);
 
 
-type ScheduleConfig = Pick<
-    TxConfigs['whitelist'],
-    | 'scheduledAdminModeEnabled'
-    | 'scheduledAdminModeFrequency'
-    | 'scheduledAdminModeTime'
-    | 'scheduledAdminModeDate'
->;
+type ScheduleConfig = {
+    enabled: boolean;
+    frequency: 'daily' | 'nextDay';
+    time: string;
+    date: string;
+};
 
 export const formatLocalDate = (date: Date) => {
     const year = date.getFullYear();
@@ -25,24 +24,24 @@ export const getNextDayDate = (date = new Date()) => {
     return formatLocalDate(tomorrow);
 };
 
-export const shouldTriggerAdminMode = (
+export const shouldTriggerSchedule = (
     config: ScheduleConfig,
     now: Date,
     lastDailyTriggerDate: string | null,
 ) => {
-    if (!config.scheduledAdminModeEnabled) return false;
+    if (!config.enabled) return false;
 
-    const [hours, minutes] = config.scheduledAdminModeTime.split(':').map(Number);
+    const [hours, minutes] = config.time.split(':').map(Number);
     if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return false;
 
-    if (config.scheduledAdminModeFrequency === 'daily') {
+    if (config.frequency === 'daily') {
         const today = formatLocalDate(now);
         return lastDailyTriggerDate !== today
             && now.getHours() === hours
             && now.getMinutes() === minutes;
     }
 
-    const dateParts = config.scheduledAdminModeDate.split('-').map(Number);
+    const dateParts = config.date.split('-').map(Number);
     if (dateParts.length !== 3 || dateParts.some(part => !Number.isInteger(part))) return false;
     const [year, month, day] = dateParts;
     const scheduledAt = new Date(year, month - 1, day, hours, minutes, 0, 0);
@@ -52,26 +51,80 @@ export const shouldTriggerAdminMode = (
         && now.getTime() >= scheduledAt.getTime();
 };
 
+export const shouldTriggerAdminMode = (
+    config: Pick<
+        TxConfigs['whitelist'],
+        | 'scheduledAdminModeEnabled'
+        | 'scheduledAdminModeFrequency'
+        | 'scheduledAdminModeTime'
+        | 'scheduledAdminModeDate'
+    >,
+    now: Date,
+    lastDailyTriggerDate: string | null,
+) => shouldTriggerSchedule({
+    enabled: config.scheduledAdminModeEnabled,
+    frequency: config.scheduledAdminModeFrequency,
+    time: config.scheduledAdminModeTime,
+    date: config.scheduledAdminModeDate,
+}, now, lastDailyTriggerDate);
 
-/** Switches the existing allowlist mode to Admin-only on a configured schedule. */
+export const shouldTriggerKickAll = (
+    config: Pick<
+        TxConfigs['whitelist'],
+        | 'scheduledKickAllEnabled'
+        | 'scheduledKickAllFrequency'
+        | 'scheduledKickAllTime'
+        | 'scheduledKickAllDate'
+    >,
+    now: Date,
+    lastDailyTriggerDate: string | null,
+) => shouldTriggerSchedule({
+    enabled: config.scheduledKickAllEnabled,
+    frequency: config.scheduledKickAllFrequency,
+    time: config.scheduledKickAllTime,
+    date: config.scheduledKickAllDate,
+}, now, lastDailyTriggerDate);
+
+
+/** Handles the scheduled Admin-only switch and scheduled kick-all action. */
 export default class AdminModeScheduler {
     static readonly configKeysWatched = [
         'whitelist.scheduledAdminModeEnabled',
         'whitelist.scheduledAdminModeFrequency',
         'whitelist.scheduledAdminModeTime',
         'whitelist.scheduledAdminModeDate',
+        'whitelist.scheduledKickAllEnabled',
+        'whitelist.scheduledKickAllFrequency',
+        'whitelist.scheduledKickAllTime',
+        'whitelist.scheduledKickAllDate',
     ];
 
     private readonly checkInterval: ReturnType<typeof setInterval>;
     private lastDailyTriggerDate: string | null = null;
+    private lastDailyKickAllTriggerDate: string | null = null;
 
     constructor() {
         setImmediate(() => this.checkSchedule());
         this.checkInterval = setInterval(() => this.checkSchedule(), 30_000);
     }
 
-    handleConfigUpdate(_updatedConfigs: UpdateConfigKeySet) {
-        this.lastDailyTriggerDate = null;
+    handleConfigUpdate(updatedConfigs: UpdateConfigKeySet) {
+        if (updatedConfigs.hasMatch([
+            'whitelist.scheduledAdminModeEnabled',
+            'whitelist.scheduledAdminModeFrequency',
+            'whitelist.scheduledAdminModeTime',
+            'whitelist.scheduledAdminModeDate',
+        ])) {
+            this.lastDailyTriggerDate = null;
+        }
+        if (updatedConfigs.hasMatch([
+            'whitelist.scheduledKickAllEnabled',
+            'whitelist.scheduledKickAllFrequency',
+            'whitelist.scheduledKickAllTime',
+            'whitelist.scheduledKickAllDate',
+        ])) {
+            this.lastDailyKickAllTriggerDate = null;
+        }
         this.checkSchedule();
     }
 
@@ -81,7 +134,16 @@ export default class AdminModeScheduler {
 
     checkSchedule(now = new Date()) {
         const schedule = txConfig.whitelist;
-        if (!shouldTriggerAdminMode(schedule, now, this.lastDailyTriggerDate)) return;
+        if (shouldTriggerAdminMode(schedule, now, this.lastDailyTriggerDate)) {
+            this.triggerAdminModeSchedule(now);
+        }
+        if (shouldTriggerKickAll(schedule, now, this.lastDailyKickAllTriggerDate)) {
+            this.triggerKickAllSchedule(now);
+        }
+    }
+
+    private triggerAdminModeSchedule(now: Date) {
+        const schedule = txConfig.whitelist;
 
         if (schedule.scheduledAdminModeFrequency === 'daily') {
             this.lastDailyTriggerDate = formatLocalDate(now);
@@ -101,5 +163,40 @@ export default class AdminModeScheduler {
             },
         }, 'SCHEDULER');
         txCore.webServer.webSocket.pushRefresh('status');
+    }
+
+    private triggerKickAllSchedule(now: Date) {
+        const schedule = txConfig.whitelist;
+        if (schedule.scheduledKickAllFrequency === 'daily') {
+            this.lastDailyKickAllTriggerDate = formatLocalDate(now);
+        }
+
+        const isOneTime = schedule.scheduledKickAllFrequency === 'nextDay';
+        const mustChangeMode = schedule.mode !== 'adminOnly';
+        if (mustChangeMode || isOneTime) {
+            txCore.configStore.saveConfigs({
+                whitelist: {
+                    mode: 'adminOnly',
+                    ...(isOneTime ? {
+                        scheduledKickAllEnabled: false,
+                        scheduledKickAllDate: '',
+                    } : {}),
+                },
+            }, 'SCHEDULER');
+            txCore.webServer.webSocket.pushRefresh('status');
+        }
+
+        const kickMessage = schedule.scheduledKickAllMessage.trim();
+        console.log(`Kicking all players from the ${isOneTime ? 'one-time' : 'daily'} schedule.`);
+        txCore.logger.admin.write('SCHEDULER', `Kicking all players: ${kickMessage}`);
+        const eventSent = txCore.fxRunner.sendEvent('playerKicked', {
+            target: -1,
+            author: 'SCHEDULER',
+            reason: kickMessage,
+            dropMessage: kickMessage,
+        });
+        if (!eventSent) {
+            console.warn('Unable to send the scheduled kick-all event because the server is not running.');
+        }
     }
 }

@@ -67,6 +67,11 @@ const restructureOldConfig = (old: any) => {
             scheduledAdminModeFrequency: 'daily',
             scheduledAdminModeTime: '17:45',
             scheduledAdminModeDate: '',
+            scheduledKickAllEnabled: false,
+            scheduledKickAllFrequency: 'daily',
+            scheduledKickAllTime: '17:45',
+            scheduledKickAllDate: '',
+            scheduledKickAllMessage: 'The server is entering Admin-only maintenance mode.',
         },
         gameFeatures: {
             menuEnabled: old?.global?.menuEnabled,

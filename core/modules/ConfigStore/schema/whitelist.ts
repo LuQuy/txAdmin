@@ -65,6 +65,42 @@ const scheduledAdminModeDate = typeDefinedConfig({
     fixer: SYM_FIXER_DEFAULT,
 });
 
+const scheduledKickAllEnabled = typeDefinedConfig({
+    name: 'Scheduled Kick All Members Enabled',
+    default: false,
+    validator: z.boolean(),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const scheduledKickAllFrequency = typeDefinedConfig({
+    name: 'Scheduled Kick All Members Frequency',
+    default: 'daily',
+    validator: z.enum(['daily', 'nextDay']),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const scheduledKickAllTime = typeDefinedConfig({
+    name: 'Scheduled Kick All Members Time',
+    default: '17:45',
+    validator: z.string().regex(regexHoursMinutes),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+// Internal target date used to keep a one-time schedule stable across restarts.
+const scheduledKickAllDate = typeDefinedConfig({
+    name: 'Scheduled Kick All Members Date',
+    default: '',
+    validator: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
+const scheduledKickAllMessage = typeDefinedConfig({
+    name: 'Scheduled Kick All Members Message',
+    default: 'The server is entering Admin-only maintenance mode.',
+    validator: z.string().trim().min(1).max(512),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
 
 export default {
     mode,
@@ -74,4 +110,9 @@ export default {
     scheduledAdminModeFrequency,
     scheduledAdminModeTime,
     scheduledAdminModeDate,
+    scheduledKickAllEnabled,
+    scheduledKickAllFrequency,
+    scheduledKickAllTime,
+    scheduledKickAllDate,
+    scheduledKickAllMessage,
 } as const;

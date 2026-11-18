@@ -173,22 +173,42 @@ const handleWhitelistCard: CardHandler = async (inputConfig) => {
     if (!inputConfig.whitelist) throw new Error(`Unexpected data for the 'whitelist' card.`);
 
     const incoming = inputConfig.whitelist;
-    const enabled = incoming.scheduledAdminModeEnabled ?? txConfig.whitelist.scheduledAdminModeEnabled;
-    const frequency = incoming.scheduledAdminModeFrequency ?? txConfig.whitelist.scheduledAdminModeFrequency;
-    const relevantSettingChanged = (
-        enabled !== txConfig.whitelist.scheduledAdminModeEnabled
-        || frequency !== txConfig.whitelist.scheduledAdminModeFrequency
-        || (
-            incoming.scheduledAdminModeTime !== undefined
-            && incoming.scheduledAdminModeTime !== txConfig.whitelist.scheduledAdminModeTime
-        )
-    );
+    const normalizeScheduleDate = (
+        enabledKey: 'scheduledAdminModeEnabled' | 'scheduledKickAllEnabled',
+        frequencyKey: 'scheduledAdminModeFrequency' | 'scheduledKickAllFrequency',
+        timeKey: 'scheduledAdminModeTime' | 'scheduledKickAllTime',
+        dateKey: 'scheduledAdminModeDate' | 'scheduledKickAllDate',
+    ) => {
+        const enabled = incoming[enabledKey] ?? txConfig.whitelist[enabledKey];
+        const frequency = incoming[frequencyKey] ?? txConfig.whitelist[frequencyKey];
+        const relevantSettingChanged = (
+            enabled !== txConfig.whitelist[enabledKey]
+            || frequency !== txConfig.whitelist[frequencyKey]
+            || (
+                incoming[timeKey] !== undefined
+                && incoming[timeKey] !== txConfig.whitelist[timeKey]
+            )
+        );
 
-    if (!enabled || frequency === 'daily') {
-        incoming.scheduledAdminModeDate = '';
-    } else if (relevantSettingChanged || !txConfig.whitelist.scheduledAdminModeDate) {
-        incoming.scheduledAdminModeDate = getNextDayDate();
-    }
+        if (!enabled || frequency === 'daily') {
+            incoming[dateKey] = '';
+        } else if (relevantSettingChanged || !txConfig.whitelist[dateKey]) {
+            incoming[dateKey] = getNextDayDate();
+        }
+    };
+
+    normalizeScheduleDate(
+        'scheduledAdminModeEnabled',
+        'scheduledAdminModeFrequency',
+        'scheduledAdminModeTime',
+        'scheduledAdminModeDate',
+    );
+    normalizeScheduleDate(
+        'scheduledKickAllEnabled',
+        'scheduledKickAllFrequency',
+        'scheduledKickAllTime',
+        'scheduledKickAllDate',
+    );
 
     return { processedConfig: inputConfig };
 };

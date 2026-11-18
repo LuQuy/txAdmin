@@ -21,6 +21,10 @@ export const pageConfigs = {
     scheduledAdminModeEnabled: getPageConfig('whitelist', 'scheduledAdminModeEnabled'),
     scheduledAdminModeFrequency: getPageConfig('whitelist', 'scheduledAdminModeFrequency'),
     scheduledAdminModeTime: getPageConfig('whitelist', 'scheduledAdminModeTime'),
+    scheduledKickAllEnabled: getPageConfig('whitelist', 'scheduledKickAllEnabled'),
+    scheduledKickAllFrequency: getPageConfig('whitelist', 'scheduledKickAllFrequency'),
+    scheduledKickAllTime: getPageConfig('whitelist', 'scheduledKickAllTime'),
+    scheduledKickAllMessage: getPageConfig('whitelist', 'scheduledKickAllMessage'),
 } as const;
 
 export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardProps) {
@@ -127,6 +131,15 @@ export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardPr
                     msg: 'The following Discord Role ID(s) are invalid: \n' + invalidRoles.join('\n'),
                 });
             }
+        }
+        if (
+            localConfigs.whitelist?.scheduledKickAllEnabled
+            && !localConfigs.whitelist.scheduledKickAllMessage?.trim()
+        ) {
+            return txToast.error('Please enter the message shown to players when the scheduled kick runs.');
+        }
+        if ((localConfigs.whitelist?.scheduledKickAllMessage?.length ?? 0) > 512) {
+            return txToast.error('The scheduled kick message must be 512 characters or less.');
         }
         pageCtx.saveChanges(cardCtx, localConfigs);
     }
@@ -277,6 +290,56 @@ export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardPr
                     Automatically changes the Allowlist Mode to Admin-only at the selected server time. Choose Daily to repeat every day, or Tomorrow only to run once on the next day and then disable this schedule.
                     <SettingItemWarningLine visible={!pageCtx.isReadOnly && !states.scheduledAdminModeEnabled}>
                         Enable this setting to schedule Admin-only mode. When disabled, the Allowlist Mode is changed manually.
+                    </SettingItemWarningLine>
+                </SettingItemDesc>
+            </SettingItem>
+            <SettingItem
+                label="Scheduled Kick All Members"
+                htmlFor={cfg.scheduledKickAllEnabled.eid}
+            >
+                <SwitchText
+                    id={cfg.scheduledKickAllEnabled.eid}
+                    checkedLabel="Enabled"
+                    uncheckedLabel="Disabled"
+                    checked={states.scheduledKickAllEnabled}
+                    onCheckedChange={cfg.scheduledKickAllEnabled.state.set}
+                    disabled={pageCtx.isReadOnly}
+                />
+                <div className="flex max-w-md flex-col gap-2 sm:flex-row">
+                    <Select
+                        value={states.scheduledKickAllFrequency}
+                        onValueChange={cfg.scheduledKickAllFrequency.state.set as any}
+                        disabled={pageCtx.isReadOnly || !states.scheduledKickAllEnabled}
+                    >
+                        <SelectTrigger id={cfg.scheduledKickAllFrequency.eid}>
+                            <SelectValue placeholder="Select frequency..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="daily">Daily</SelectItem>
+                            <SelectItem value="nextDay">Tomorrow only</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Input
+                        id={cfg.scheduledKickAllTime.eid}
+                        type="time"
+                        value={states.scheduledKickAllTime ?? ''}
+                        onChange={(event) => cfg.scheduledKickAllTime.state.set(event.target.value)}
+                        disabled={pageCtx.isReadOnly || !states.scheduledKickAllEnabled}
+                        className="sm:w-36"
+                    />
+                </div>
+                <Input
+                    id={cfg.scheduledKickAllMessage.eid}
+                    value={states.scheduledKickAllMessage ?? ''}
+                    onChange={(event) => cfg.scheduledKickAllMessage.state.set(event.target.value)}
+                    placeholder="The server is entering Admin-only maintenance mode."
+                    maxLength={512}
+                    disabled={pageCtx.isReadOnly || !states.scheduledKickAllEnabled}
+                />
+                <SettingItemDesc>
+                    At the selected server time, txAdmin first changes the Allowlist Mode to Admin-only, then kicks every connected player with this message. Tomorrow only runs once and then disables this schedule.
+                    <SettingItemWarningLine visible={!pageCtx.isReadOnly && !states.scheduledKickAllEnabled}>
+                        Enable this setting to schedule the Admin-only switch and kick all connected players.
                     </SettingItemWarningLine>
                 </SettingItemDesc>
             </SettingItem>
