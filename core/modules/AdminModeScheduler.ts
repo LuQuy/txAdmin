@@ -67,7 +67,7 @@ export default class AdminModeScheduler {
 
     constructor() {
         setImmediate(() => this.checkSchedule());
-        this.checkInterval = setInterval(() => this.checkSchedule(), 60_000);
+        this.checkInterval = setInterval(() => this.checkSchedule(), 30_000);
     }
 
     handleConfigUpdate(_updatedConfigs: UpdateConfigKeySet) {
