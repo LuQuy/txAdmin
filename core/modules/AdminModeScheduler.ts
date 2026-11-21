@@ -24,6 +24,50 @@ export const getNextDayDate = (date = new Date()) => {
     return formatLocalDate(tomorrow);
 };
 
+export const getScheduleMinuteFloorTs = (config: ScheduleConfig, now: Date) => {
+    const [hours, minutes] = config.time.split(':').map(Number);
+    if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return false;
+
+    if (config.frequency === 'daily') {
+        const thisMinuteTs = new Date(now).setSeconds(0, 0);
+        const scheduledDate = new Date(now);
+        let scheduledMinuteFloorTs = scheduledDate.setHours(hours, minutes, 0, 0);
+        if (scheduledMinuteFloorTs < thisMinuteTs) {
+            scheduledDate.setDate(scheduledDate.getDate() + 1);
+            scheduledMinuteFloorTs = scheduledDate.getTime();
+        }
+        return scheduledMinuteFloorTs;
+    }
+
+    const dateParts = config.date.split('-').map(Number);
+    if (dateParts.length !== 3 || dateParts.some(part => !Number.isInteger(part))) return false;
+    const [year, month, day] = dateParts;
+    const scheduledAt = new Date(year, month - 1, day, hours, minutes, 0, 0);
+    if (
+        scheduledAt.getFullYear() !== year
+        || scheduledAt.getMonth() !== month - 1
+        || scheduledAt.getDate() !== day
+    ) {
+        return false;
+    }
+    return scheduledAt.getTime();
+};
+
+export const getDueScheduleWarning = (
+    config: ScheduleConfig,
+    warningMinutes: number[],
+    now: Date,
+) => {
+    if (!config.enabled) return false;
+    const scheduledMinuteFloorTs = getScheduleMinuteFloorTs(config, now);
+    if (scheduledMinuteFloorTs === false) return false;
+
+    const thisMinuteTs = new Date(now).setSeconds(0, 0);
+    const minutesRemaining = Math.floor((scheduledMinuteFloorTs - thisMinuteTs) / 60_000);
+    if (!warningMinutes.includes(minutesRemaining)) return false;
+    return { scheduledMinuteFloorTs, minutesRemaining };
+};
+
 export const shouldTriggerSchedule = (
     config: ScheduleConfig,
     now: Date,
@@ -31,24 +75,16 @@ export const shouldTriggerSchedule = (
 ) => {
     if (!config.enabled) return false;
 
-    const [hours, minutes] = config.time.split(':').map(Number);
-    if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return false;
+    const scheduledMinuteFloorTs = getScheduleMinuteFloorTs(config, now);
+    if (scheduledMinuteFloorTs === false) return false;
 
     if (config.frequency === 'daily') {
         const today = formatLocalDate(now);
         return lastDailyTriggerDate !== today
-            && now.getHours() === hours
-            && now.getMinutes() === minutes;
+            && new Date(now).setSeconds(0, 0) === scheduledMinuteFloorTs;
     }
 
-    const dateParts = config.date.split('-').map(Number);
-    if (dateParts.length !== 3 || dateParts.some(part => !Number.isInteger(part))) return false;
-    const [year, month, day] = dateParts;
-    const scheduledAt = new Date(year, month - 1, day, hours, minutes, 0, 0);
-    return scheduledAt.getFullYear() === year
-        && scheduledAt.getMonth() === month - 1
-        && scheduledAt.getDate() === day
-        && now.getTime() >= scheduledAt.getTime();
+    return now.getTime() >= scheduledMinuteFloorTs;
 };
 
 export const shouldTriggerAdminMode = (
@@ -97,11 +133,14 @@ export default class AdminModeScheduler {
         'whitelist.scheduledKickAllFrequency',
         'whitelist.scheduledKickAllTime',
         'whitelist.scheduledKickAllDate',
+        'whitelist.scheduledKickAllWarnings',
     ];
 
     private readonly checkInterval: ReturnType<typeof setInterval>;
     private lastDailyTriggerDate: string | null = null;
     private lastDailyKickAllTriggerDate: string | null = null;
+    private kickAllWarningOccurrenceTs: number | false = false;
+    private readonly sentKickAllWarnings = new Set<number>();
 
     constructor() {
         setImmediate(() => this.checkSchedule());
@@ -122,8 +161,11 @@ export default class AdminModeScheduler {
             'whitelist.scheduledKickAllFrequency',
             'whitelist.scheduledKickAllTime',
             'whitelist.scheduledKickAllDate',
+            'whitelist.scheduledKickAllWarnings',
         ])) {
             this.lastDailyKickAllTriggerDate = null;
+            this.kickAllWarningOccurrenceTs = false;
+            this.sentKickAllWarnings.clear();
         }
         this.checkSchedule();
     }
@@ -134,11 +176,42 @@ export default class AdminModeScheduler {
 
     checkSchedule(now = new Date()) {
         const schedule = txConfig.whitelist;
+        this.checkKickAllWarning(now);
         if (shouldTriggerAdminMode(schedule, now, this.lastDailyTriggerDate)) {
             this.triggerAdminModeSchedule(now);
         }
         if (shouldTriggerKickAll(schedule, now, this.lastDailyKickAllTriggerDate)) {
             this.triggerKickAllSchedule(now);
+        }
+    }
+
+    private checkKickAllWarning(now: Date) {
+        const schedule = txConfig.whitelist;
+        const dueWarning = getDueScheduleWarning({
+            enabled: schedule.scheduledKickAllEnabled,
+            frequency: schedule.scheduledKickAllFrequency,
+            time: schedule.scheduledKickAllTime,
+            date: schedule.scheduledKickAllDate,
+        }, schedule.scheduledKickAllWarnings, now);
+
+        if (!dueWarning) return;
+        if (this.kickAllWarningOccurrenceTs !== dueWarning.scheduledMinuteFloorTs) {
+            this.kickAllWarningOccurrenceTs = dueWarning.scheduledMinuteFloorTs;
+            this.sentKickAllWarnings.clear();
+        }
+        if (this.sentKickAllWarnings.has(dueWarning.minutesRemaining)) return;
+        this.sentKickAllWarnings.add(dueWarning.minutesRemaining);
+
+        const message = schedule.scheduledKickAllWarningMessage
+            .trim()
+            .replaceAll('{minutes}', String(dueWarning.minutesRemaining));
+        console.log(`Announcing scheduled kick-all warning for ${dueWarning.minutesRemaining} minutes remaining.`);
+        const eventSent = txCore.fxRunner.sendEvent('announcement', {
+            author: 'txAdmin',
+            message,
+        });
+        if (!eventSent) {
+            console.warn('Unable to send the scheduled kick-all warning because the server is not running.');
         }
     }
 

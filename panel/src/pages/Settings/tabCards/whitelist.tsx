@@ -25,6 +25,8 @@ export const pageConfigs = {
     scheduledKickAllFrequency: getPageConfig('whitelist', 'scheduledKickAllFrequency'),
     scheduledKickAllTime: getPageConfig('whitelist', 'scheduledKickAllTime'),
     scheduledKickAllMessage: getPageConfig('whitelist', 'scheduledKickAllMessage'),
+    scheduledKickAllWarnings: getPageConfig('whitelist', 'scheduledKickAllWarnings'),
+    scheduledKickAllWarningMessage: getPageConfig('whitelist', 'scheduledKickAllWarningMessage'),
 } as const;
 
 export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardProps) {
@@ -45,11 +47,18 @@ export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardPr
     //Refs for configs that don't use state
     const rejectionMessageRef = useRef<AutosizeTextAreaRef | null>(null);
     const discordRolesRef = useRef<HTMLInputElement | null>(null);
+    const scheduledKickAllWarningsRef = useRef<HTMLInputElement | null>(null);
 
     //Marshalling Utils
     const inputArrayUtil = {
         toUi: (args?: string[]) => args ? args.join(', ') : '',
         toCfg: (str?: string) => str ? str.split(/[,;]\s*/).map(x => x.trim()).filter(x => x.length) : [],
+    }
+    const inputNumberArrayUtil = {
+        toUi: (args?: number[]) => args ? args.join(', ') : '',
+        toCfg: (str?: string) => str
+            ? str.split(/[,;]\s*/).map(x => x.trim()).filter(x => x.length).map(Number)
+            : [],
     }
 
     //External Read-only Configs
@@ -68,6 +77,7 @@ export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardPr
         const overwrites = {
             rejectionMessage: currRejectionMessage,
             discordRoles: currDiscordRoles,
+            scheduledKickAllWarnings: inputNumberArrayUtil.toCfg(scheduledKickAllWarningsRef.current?.value),
         };
 
         const res = getConfigDiff(cfg, states, overwrites, false);
@@ -140,6 +150,22 @@ export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardPr
         }
         if ((localConfigs.whitelist?.scheduledKickAllMessage?.length ?? 0) > 512) {
             return txToast.error('The scheduled kick message must be 512 characters or less.');
+        }
+        if (
+            localConfigs.whitelist?.scheduledKickAllEnabled
+            && !localConfigs.whitelist.scheduledKickAllWarningMessage?.trim()
+        ) {
+            return txToast.error('Please enter the message shown before the scheduled kick runs.');
+        }
+        if ((localConfigs.whitelist?.scheduledKickAllWarningMessage?.length ?? 0) > 512) {
+            return txToast.error('The scheduled kick warning message must be 512 characters or less.');
+        }
+        if (
+            localConfigs.whitelist?.scheduledKickAllWarnings?.some(
+                minutes => !Number.isInteger(minutes) || minutes < 1 || minutes > 1439,
+            )
+        ) {
+            return txToast.error('Warning minutes must be whole numbers between 1 and 1439.');
         }
         pageCtx.saveChanges(cardCtx, localConfigs);
     }
@@ -333,11 +359,30 @@ export default function ConfigCardWhitelist({ cardCtx, pageCtx }: SettingsCardPr
                     value={states.scheduledKickAllMessage ?? ''}
                     onChange={(event) => cfg.scheduledKickAllMessage.state.set(event.target.value)}
                     placeholder="The server is entering Admin-only maintenance mode."
+                    aria-label="Kick message"
+                    maxLength={512}
+                    disabled={pageCtx.isReadOnly || !states.scheduledKickAllEnabled}
+                />
+                <Input
+                    id={cfg.scheduledKickAllWarnings.eid}
+                    ref={scheduledKickAllWarningsRef}
+                    defaultValue={inputNumberArrayUtil.toUi(cfg.scheduledKickAllWarnings.initialValue)}
+                    onInput={updatePageState}
+                    placeholder="15, 5"
+                    aria-label="Warning minutes before kick"
+                    disabled={pageCtx.isReadOnly || !states.scheduledKickAllEnabled}
+                />
+                <Input
+                    id={cfg.scheduledKickAllWarningMessage.eid}
+                    value={states.scheduledKickAllWarningMessage ?? ''}
+                    onChange={(event) => cfg.scheduledKickAllWarningMessage.state.set(event.target.value)}
+                    placeholder="Server maintenance starts in {minutes} minutes."
+                    aria-label="Warning message"
                     maxLength={512}
                     disabled={pageCtx.isReadOnly || !states.scheduledKickAllEnabled}
                 />
                 <SettingItemDesc>
-                    At the selected server time, txAdmin first changes the Allowlist Mode to Admin-only, then kicks every connected player with this message. Tomorrow only runs once and then disables this schedule.
+                    At the selected server time, txAdmin first changes the Allowlist Mode to Admin-only, then kicks every connected player with the kick message. Warning minutes are comma-separated; leave them empty to disable warnings. Use <InlineCode>{'{minutes}'}</InlineCode> in the warning message for the remaining time. Tomorrow only runs once and then disables this schedule.
                     <SettingItemWarningLine visible={!pageCtx.isReadOnly && !states.scheduledKickAllEnabled}>
                         Enable this setting to schedule the Admin-only switch and kick all connected players.
                     </SettingItemWarningLine>

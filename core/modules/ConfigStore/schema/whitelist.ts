@@ -101,6 +101,29 @@ const scheduledKickAllMessage = typeDefinedConfig({
     fixer: SYM_FIXER_DEFAULT,
 });
 
+export const polishScheduledKickAllWarnings = (input: number[]) => {
+    const unique = [...new Set(input)];
+    return unique.sort((a, b) => b - a);
+};
+
+const scheduledKickAllWarnings = typeDefinedConfig({
+    name: 'Scheduled Kick All Warning Minutes',
+    default: [15, 5],
+    validator: z.number().int().min(1).max(1439).array().transform(polishScheduledKickAllWarnings),
+    fixer: (input: any) => {
+        if (!Array.isArray(input)) return [15, 5];
+        const valid = input.filter(item => Number.isInteger(item) && item >= 1 && item <= 1439);
+        return polishScheduledKickAllWarnings(valid);
+    },
+});
+
+const scheduledKickAllWarningMessage = typeDefinedConfig({
+    name: 'Scheduled Kick All Warning Message',
+    default: 'Server will enter Admin-only maintenance mode and disconnect all players in {minutes} minutes.',
+    validator: z.string().trim().min(1).max(512),
+    fixer: SYM_FIXER_DEFAULT,
+});
+
 
 export default {
     mode,
@@ -115,4 +138,6 @@ export default {
     scheduledKickAllTime,
     scheduledKickAllDate,
     scheduledKickAllMessage,
+    scheduledKickAllWarnings,
+    scheduledKickAllWarningMessage,
 } as const;
